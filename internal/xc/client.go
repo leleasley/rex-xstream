@@ -137,6 +137,16 @@ func (c *Client) SeriesInfo(ctx context.Context, seriesID string) (SeriesInfo, e
 	return out, nil
 }
 
+// SimpleDataTable is the provider's per-channel guide. Some panels omit
+// channels from xmltv.php but still answer this endpoint.
+func (c *Client) SimpleDataTable(ctx context.Context, streamID string) ([]EPGListing, error) {
+	var out SimpleDataTable
+	if err := c.getJSON(ctx, "get_simple_data_table", url.Values{"stream_id": {streamID}}, &out); err != nil {
+		return nil, err
+	}
+	return out.Listings, nil
+}
+
 func (c *Client) VODInfo(ctx context.Context, vodID string) (VODInfo, error) {
 	var out VODInfo
 	if err := c.getJSON(ctx, "get_vod_info", url.Values{"vod_id": {vodID}}, &out); err != nil {

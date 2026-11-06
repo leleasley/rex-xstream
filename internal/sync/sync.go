@@ -2,6 +2,7 @@ package sync
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/leleasley/rex-xstream/internal/config"
 	"github.com/leleasley/rex-xstream/internal/epg"
@@ -330,13 +332,101 @@ func (s *Syncer) syncEPG(ctx context.Context, client *xc.Client, playlistID int6
 	for _, id := range epgIDs {
 		allowed[id] = true
 	}
-	filtered := programmes[:0]
+	filtered := make([]models.Programme, 0, len(programmes))
+	guided := map[string]bool{}
 	for _, programme := range programmes {
 		if allowed[programme.ChannelEPGID] {
 			filtered = append(filtered, programme)
+			guided[programme.ChannelEPGID] = true
 		}
 	}
-	return s.store.ReplaceProgrammes(ctx, playlistID, filtered)
+	// Some panels leave a channel out of xmltv.php but answer its own guide.
+	channels, err := s.store.ActiveChannels(ctx, playlistID)
+	if err != nil {
+		return err
+	}
+	tried := map[string]bool{}
+	for _, channel := range channels {
+		if channel.EPGID == "" || guided[channel.EPGID] || tried[channel.EPGID] {
+			continue
+		}
+		tried[channel.EPGID] = true
+		listings, err := client.SimpleDataTable(ctx, channel.ProviderID)
+		if err != nil || len(listings) == 0 {
+			continue
+		}
+		for _, listing := range listings {
+			if programme, ok := programmeFromListing(channel.EPGID, listing); ok &&
+				programme.Stop.After(from) && programme.Start.Before(to) {
+				filtered = append(filtered, programme)
+				guided[channel.EPGID] = true
+			}
+		}
+	}
+	if err := s.store.ReplaceProgrammes(ctx, playlistID, filtered); err != nil {
+		return err
+	}
+	// The guide lives on the channel rows, so re-push them.
+	return s.store.MarkChannelsDirty(ctx, playlistID)
+}
+
+func programmeFromListing(epgID string, listing xc.EPGListing) (models.Programme, bool) {
+	start, ok := listingTime(listing.StartTimestamp.String(), listing.Start)
+	if !ok {
+		return models.Programme{}, false
+	}
+	stop, ok := listingTime(listing.StopTimestamp.String(), listing.End)
+	if !ok || !stop.After(start) {
+		return models.Programme{}, false
+	}
+	title := decodeText(listing.Title)
+	if title == "" {
+		return models.Programme{}, false
+	}
+	return models.Programme{
+		ChannelEPGID: epgID,
+		Start:        start,
+		Stop:         stop,
+		Title:        title,
+		Description:  decodeText(listing.Description),
+	}, true
+}
+
+func listingTime(timestamp, fallback string) (time.Time, bool) {
+	if parsed, err := strconv.ParseInt(strings.TrimSpace(timestamp), 10, 64); err == nil && parsed > 0 {
+		if parsed > 1_000_000_000_000 {
+			parsed /= 1000
+		}
+		return time.Unix(parsed, 0).UTC(), true
+	}
+	value := strings.TrimSpace(fallback)
+	for _, layout := range []string{"2006-01-02 15:04:05", "2006-01-02T15:04:05Z07:00", "2006-01-02 15:04:05 -0700"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC(), true
+		}
+	}
+	return time.Time{}, false
+}
+
+func decodeText(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil && len(decoded) > 0 && utf8.Valid(decoded) {
+		text := strings.TrimSpace(string(decoded))
+		control := false
+		for _, r := range text {
+			if r < 0x20 && r != '\n' && r != '\t' {
+				control = true
+				break
+			}
+		}
+		if !control {
+			return text
+		}
+	}
+	return value
 }
 
 func (s *Syncer) processProbes(ctx context.Context, playlistID int64) (int, int, error) {

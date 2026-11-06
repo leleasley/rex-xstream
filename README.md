@@ -219,8 +219,9 @@ tile.
 
 ## EPG
 
-The provider XMLTV guide is parsed once per synchronisation and stored by channel EPG id. Only
-the channels present in the playlist receive a guide. The guide window is three hours in the
+The provider XMLTV guide is parsed once per synchronisation and stored by channel EPG id. If a
+channel is missing from XMLTV, its provider `get_simple_data_table` response is used as a
+fallback. Only channels present in the playlist receive a guide. The guide window is three hours in the
 past and `EPG_DAYS` ahead. Programme icons, categories and `xmltv_ns` episode numbers are kept.
 
 ## Security

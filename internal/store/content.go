@@ -62,6 +62,36 @@ func (s *Store) ListChannels(ctx context.Context, playlistID int64, category str
 	return out, total, nil
 }
 
+func (s *Store) ActiveChannels(ctx context.Context, playlistID int64) ([]models.Channel, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, playlist_id, provider_id, name, number, logo, epg_id,
+        category_ids, tv_archive, probe_status, probe_error, active FROM channels
+        WHERE playlist_id = ? AND active = 1 ORDER BY id`, playlistID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []models.Channel
+	for rows.Next() {
+		var item models.Channel
+		var categories string
+		var archive, active int
+		if err := rows.Scan(&item.ID, &item.PlaylistID, &item.ProviderID, &item.Name, &item.Number, &item.Logo,
+			&item.EPGID, &categories, &archive, &item.ProbeStatus, &item.ProbeError, &active); err != nil {
+			return nil, err
+		}
+		item.CategoryIDs = decodeCategories(categories)
+		item.TVArchive = archive == 1
+		item.Active = active == 1
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func (s *Store) MarkChannelsDirty(ctx context.Context, playlistID int64) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE channels SET dirty = 1 WHERE playlist_id = ? AND active = 1`, playlistID)
+	return err
+}
+
 func (s *Store) ListMovies(ctx context.Context, playlistID int64, category string, limit, offset int) ([]models.Movie, int, error) {
 	where := `playlist_id = ? AND active = 1`
 	args := []any{playlistID}

@@ -158,6 +158,24 @@ func TestStreamURLs(t *testing.T) {
 	}
 }
 
+func TestSimpleDataTable(t *testing.T) {
+	srv := server(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("action") != "get_simple_data_table" || r.URL.Query().Get("stream_id") != "10" {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(w, `{"epg_listings":[{"title":"QkJDIE5ld3M=","description":"SGVsbG8=","start_timestamp":"1793988000","stop_timestamp":"1793991600"}]}`)
+	})
+	client := newClient(t, srv.URL)
+	listings, err := client.SimpleDataTable(context.Background(), "10")
+	if err != nil || len(listings) != 1 {
+		t.Fatalf("listings: %+v %v", listings, err)
+	}
+	if listings[0].Title != "QkJDIE5ld3M=" || listings[0].StartTimestamp.String() != "1793988000" {
+		t.Fatalf("listing: %+v", listings[0])
+	}
+}
+
 func TestXMLTVGzip(t *testing.T) {
 	var body bytes.Buffer
 	writer := gzip.NewWriter(&body)

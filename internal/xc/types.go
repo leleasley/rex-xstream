@@ -239,6 +239,23 @@ type EpisodeTech struct {
 	DisplayAspect string     `json:"display_aspect_ratio"`
 }
 
+type EPGListing struct {
+	Title          string     `json:"title"`
+	Description    string     `json:"description"`
+	Start          string     `json:"start"`
+	End            string     `json:"end"`
+	StartTimestamp FlexString `json:"start_timestamp"`
+	StopTimestamp  FlexString `json:"stop_timestamp"`
+	ChannelID      string     `json:"channel_id"`
+	HasArchive     FlexInt    `json:"has_archive"`
+	NowPlaying     FlexInt    `json:"now_playing"`
+	CategoryID     FlexString `json:"category_id"`
+}
+
+type SimpleDataTable struct {
+	Listings []EPGListing `json:"epg_listings"`
+}
+
 type VODInfo struct {
 	Info      VODInfoDetails `json:"info"`
 	MovieData VODMovieData   `json:"movie_data"`

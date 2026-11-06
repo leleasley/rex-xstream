@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,6 +22,7 @@ import (
 	rexclient "github.com/leleasley/rex-xstream/internal/rex"
 	"github.com/leleasley/rex-xstream/internal/security"
 	"github.com/leleasley/rex-xstream/internal/store"
+	"github.com/leleasley/rex-xstream/internal/xc"
 )
 
 type fakeProber struct {
@@ -186,11 +188,31 @@ func TestRunSyncsCatalogProbesAndPushes(t *testing.T) {
 	pushedMu.Lock()
 	second := len(pushed)
 	pushedMu.Unlock()
-	if second != 0 {
+	// The guide is re-sent on every sync, so at most the live channels are
+	// pushed again. Movies and episodes must not be.
+	if second > 2 {
 		for _, item := range pushed {
 			t.Logf("second push: id=%s path=%s kind=%s", item.ID, item.Path, item.Kind)
 		}
-		t.Fatalf("second run pushed %d items, want 0", second)
+		t.Fatalf("second run pushed %d items, want at most the 2 guide-bearing channels", second)
+	}
+}
+
+func TestProgrammeFromFallbackGuide(t *testing.T) {
+	title := base64.StdEncoding.EncodeToString([]byte("BBC News"))
+	description := base64.StdEncoding.EncodeToString([]byte("The headlines"))
+	programme, ok := programmeFromListing("BBC1.uk", xc.EPGListing{
+		Title: title, Description: description,
+		StartTimestamp: "1793988000", StopTimestamp: "1793991600",
+	})
+	if !ok {
+		t.Fatal("listing was rejected")
+	}
+	if programme.Title != "BBC News" || programme.Description != "The headlines" {
+		t.Fatalf("programme: %+v", programme)
+	}
+	if programme.Stop.Sub(programme.Start).Seconds() != 3600 {
+		t.Fatalf("times: %v %v", programme.Start, programme.Stop)
 	}
 }
 
