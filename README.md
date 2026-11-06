@@ -234,6 +234,9 @@ past and `EPG_DAYS` ahead. Programme icons, categories and `xmltv_ns` episode nu
 - Stream paths are parsed as numeric ids. Arbitrary URLs and path traversal are rejected.
 - API rate limiting is per client IP.
 - The container runs as a non-root user.
+- Movies and episodes are proxied with Range support. Live HLS is a redirect to the provider,
+  so the provider credentials are present in that redirect between rex-xstream and the provider,
+  never in the add-on API or a client response.
 
 Never expose the admin API to the internet. Put it behind a VPN or a reverse proxy that blocks
 `/api/v1/playlists` from untrusted clients. REX's feed itself is designed for the local network.
