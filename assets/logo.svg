@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 920 280" role="img" aria-label="rex-xstream">
+  <defs>
+    <linearGradient id="mark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="mark2" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="52" width="176" height="176" rx="42" fill="#0b1220"/>
+  <path d="M88 100 L168 180" fill="none" stroke="url(#mark)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M168 100 L88 180" fill="none" stroke="url(#mark2)" stroke-width="22" stroke-linecap="round"/>
+  <circle cx="128" cy="140" r="27" fill="#0b1220"/>
+  <path d="M121 126 L142 140 L121 154 Z" fill="#f8fafc"/>
+  <text x="260" y="142" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="72" font-weight="700" fill="#f8fafc">rex</text>
+  <text x="400" y="142" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="72" font-weight="500" fill="#22d3ee">-xstream</text>
+  <text x="262" y="190" font-family="Inter, Segoe UI, Helvetica, Arial, sans-serif" font-size="24" font-weight="400" letter-spacing="1.5" fill="#94a3b8">XC IPTV FOR REX</text>
+</svg>

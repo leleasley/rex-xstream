@@ -1,0 +1,11 @@
+.env
+.env.*
+!.env.example
+data
+.git
+*.db
+*.db-wal
+*.db-shm
+*.log
+coverage.out
+rex-xstream

@@ -1,0 +1,400 @@
+openapi: 3.1.0
+info:
+  title: rex-xstream API
+  version: 1.0.0
+  description: XC IPTV integration for REX. Administrative endpoints require a bearer token. Stream and logo paths use the credentials REX presents as a source.
+servers:
+  - url: http://localhost:9981/api/v1
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+    PlaylistInput:
+      type: object
+      required: [name, base_url, username, password]
+      properties:
+        name:
+          type: string
+        base_url:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+        enabled:
+          type: boolean
+    Playlist:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        base_url:
+          type: string
+        enabled:
+          type: boolean
+        status:
+          type: string
+        provider:
+          type: object
+        subscription_end:
+          type: string
+          format: date-time
+        max_connections:
+          type: integer
+        last_sync_at:
+          type: string
+          format: date-time
+        last_sync_error:
+          type: string
+        has_credentials:
+          type: boolean
+    Library:
+      type: object
+      properties:
+        playlist_id:
+          type: integer
+        kind:
+          type: string
+        directory:
+          type: string
+        title:
+          type: string
+paths:
+  /health:
+    get:
+      security: []
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+  /info:
+    get:
+      security: []
+      summary: Application information
+      responses:
+        "200":
+          description: Application information and counts
+  /playlists:
+    get:
+      summary: List playlists
+      responses:
+        "200":
+          description: Playlists
+    post:
+      summary: Add a playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistInput"
+      responses:
+        "201":
+          description: Created
+        "400":
+          description: Invalid playlist
+  /playlists/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Get a playlist
+      responses:
+        "200":
+          description: Playlist
+        "404":
+          description: Not found
+    patch:
+      summary: Edit or rename a playlist
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PlaylistInput"
+      responses:
+        "200":
+          description: Updated
+    delete:
+      summary: Delete a playlist and its REX items
+      responses:
+        "204":
+          description: Deleted
+  /playlists/{id}/test:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Test provider credentials
+      responses:
+        "200":
+          description: Connection is valid
+        "502":
+          description: Provider rejected the connection
+  /playlists/{id}/sync:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    post:
+      summary: Start a background synchronisation
+      responses:
+        "202":
+          description: Started
+        "409":
+          description: Already running
+  /playlists/{id}/status:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Playlist and synchronisation status
+      responses:
+        "200":
+          description: Status
+  /playlists/{id}/live/categories:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Live categories
+      responses:
+        "200":
+          description: Categories
+  /playlists/{id}/live/channels:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: category
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        schema:
+          type: integer
+    get:
+      summary: Live channels
+      responses:
+        "200":
+          description: Channels
+  /playlists/{id}/movies/categories:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Movie categories
+      responses:
+        "200":
+          description: Categories
+  /playlists/{id}/movies:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: category
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        schema:
+          type: integer
+    get:
+      summary: Movies
+      responses:
+        "200":
+          description: Movies
+  /playlists/{id}/series/categories:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Series categories
+      responses:
+        "200":
+          description: Categories
+  /playlists/{id}/series:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: category
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+      - name: offset
+        in: query
+        schema:
+          type: integer
+    get:
+      summary: Series
+      responses:
+        "200":
+          description: Series
+  /playlists/{id}/series/{sid}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Series, seasons and episodes
+      responses:
+        "200":
+          description: Series detail
+  /playlists/{id}/series/{sid}/seasons:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+    get:
+      summary: Seasons
+      responses:
+        "200":
+          description: Seasons
+  /playlists/{id}/series/{sid}/episodes:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: sid
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: season
+        in: query
+        schema:
+          type: integer
+    get:
+      summary: Episodes
+      responses:
+        "200":
+          description: Episodes
+  /playlists/{id}/epg:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+      - name: channel
+        in: query
+        required: true
+        schema:
+          type: string
+    get:
+      summary: EPG programmes for a channel
+      responses:
+        "200":
+          description: Programmes
+  /libraries:
+    get:
+      summary: REX library definitions
+      responses:
+        "200":
+          description: Libraries
+  /libraries/{directory}:
+    parameters:
+      - name: directory
+        in: path
+        required: true
+        schema:
+          type: string
+    get:
+      summary: Content of one library
+      responses:
+        "200":
+          description: Library content
+  /stream/resolve:
+    post:
+      summary: Resolve the addon path for one item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [playlist_id, kind, id]
+              properties:
+                playlist_id:
+                  type: integer
+                kind:
+                  type: string
+                  enum: [movie, episode, channel]
+                id:
+                  type: integer
+      responses:
+        "200":
+          description: Path and URL
