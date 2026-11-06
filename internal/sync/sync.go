@@ -459,6 +459,10 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			}
 			total += len(items)
 			pushed += len(items)
+		} else {
+			// Rows with no usable probe must not keep this loop alive.
+			_ = s.store.MarkPushed(ctx, "movie", ids, rexIDs)
+			break
 		}
 		if len(movies) < s.cfg.RexPushBatch {
 			break
@@ -502,6 +506,9 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			}
 			total += len(items)
 			pushed += len(items)
+		} else {
+			_ = s.store.MarkPushed(ctx, "episode", ids, rexIDs)
+			break
 		}
 		if len(episodes) < s.cfg.RexPushBatch {
 			break
@@ -546,6 +553,9 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			}
 			total += len(items)
 			pushed += len(items)
+		} else {
+			_ = s.store.MarkPushed(ctx, "channel", ids, rexIDs)
+			break
 		}
 		if len(channels) < s.cfg.RexPushBatch {
 			break
