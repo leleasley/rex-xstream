@@ -10,6 +10,8 @@ bytes.
 This project is not an IPTV player, a replacement for REX, or a replacement for Debrid Media
 Manager. It is a source add-on built on REX's public add-on API.
 
+[Getting started](#quick-start-with-docker) · [Add a playlist](#add-a-playlist) · [Configuration](#configuration) · [Troubleshooting](#troubleshooting)
+
 ## Features
 
 - Multiple independent XC playlists
@@ -52,8 +54,8 @@ stream once, caches the result in SQLite, and pushes the item after the probe. T
 small part of the file over HTTP; it never downloads the file.
 
 Live channels use `.m3u8` paths. REX follows a redirect to the provider for live streams so HLS
-playlists and segments stay at the provider. Movies and episodes are proxied with Range support,
-which keeps provider credentials out of client URLs.
+playlists and segments stay at the provider. Movies and episodes are proxied with Range support.
+The live redirect contains provider credentials and must be treated as sensitive.
 
 ## Requirements
 
@@ -71,6 +73,10 @@ cd rex-xstream
 ./scripts/create-env.sh
 ```
 
+The script requires OpenSSL and creates `.env` with a unique API token, encryption key and
+REX source password. Keep this file private and back it up: the encryption key is needed to read
+saved provider credentials after a restore.
+
 Edit `.env` and set at least:
 
 ```ini
@@ -82,9 +88,23 @@ REX_URL=http://192.168.1.20:32400
 uses to reach REX. Do not use `127.0.0.1` for either value when the services run on different
 machines.
 
+`PUBLIC_URL` must be reachable **from REX**; the Xtream provider URL is entered later, when you
+add a playlist. `REX_URL` must be reachable **from the add-on container**. For example, if REX
+runs at `192.168.1.20:32400`, use `REX_URL=http://192.168.1.20:32400` and set `PUBLIC_URL`
+to this container host's address and port `9981`.
+
+The container runs as UID 1000 and needs write access to the bind-mounted data directory. On
+Linux, create the directory and give that user ownership before the first start:
+
+```bash
+mkdir -p data
+sudo chown 1000:1000 data
+```
+
 Start the service:
 
 ```bash
+docker compose pull
 docker compose up -d
 docker compose logs -f
 ```
@@ -97,8 +117,7 @@ The Compose file uses `ghcr.io/leleasley/rex-xstream:latest`. The release workfl
 `edge` from main, a commit SHA tag, and version tags such as `1.2.3`, `1.2`, and `1`
 from a stable `v1.2.3` Git tag. `latest` tracks stable releases only. Set
 `REX_XSTREAM_VERSION` in `.env` to pin a version. After a release is published, update with
-`docker compose pull && docker compose up -d`. The first release requires a Git tag and GitHub
-Actions package permissions; GHCR package visibility may need to be made public in GitHub.
+`docker compose pull && docker compose up -d`. The current stable release is `0.1.0`.
 
 For local development, build with `docker build -t rex-xstream:local .` and set the image
 in your own Compose override. The running version is reported by `/api/v1/health`.
@@ -111,7 +130,14 @@ and the playlist status before sharing diagnostic output; never share provider c
 
 ## Add a playlist
 
+Use the Xtream server URL, username and password supplied by your provider. The server URL is
+normally just the scheme, host and optional port; do not include a `get.php` path or credentials
+in its query string. The examples use playlist ID `1`; use the `id` returned by your request.
+
+Load your generated API token into the current shell, then replace the example provider details:
+
 ```bash
+API_TOKEN=$(sed -n 's/^API_TOKEN=//p' .env)
 curl -X POST http://192.168.1.20:9981/api/v1/playlists \
   -H "Authorization: Bearer $API_TOKEN" \
   -H "Content-Type: application/json" \
@@ -123,14 +149,25 @@ curl -X POST http://192.168.1.20:9981/api/v1/playlists \
   }'
 ```
 
-The playlist is tested, stored and synced in the background. The three libraries appear in REX
-as soon as the first items are probed and pushed.
+The playlist is stored immediately and, by default, tested and synced in the background. Its
+connection test alone does not mean the guide or media import has finished. The libraries appear
+as items pass probing and are pushed to REX. Large catalogues may take a long time; consider
+setting the `SYNC_MAX_*` values in `.env` for an initial test.
 
 Check progress:
 
 ```bash
 curl -H "Authorization: Bearer $API_TOKEN" \
   http://192.168.1.20:9981/api/v1/playlists/1/status
+```
+
+To test the login or start another sync manually:
+
+```bash
+curl -X POST -H "Authorization: Bearer $API_TOKEN" \
+  http://192.168.1.20:9981/api/v1/playlists/1/test
+curl -X POST -H "Authorization: Bearer $API_TOKEN" \
+  http://192.168.1.20:9981/api/v1/playlists/1/sync
 ```
 
 ## Configuration
@@ -148,10 +185,6 @@ All settings are environment variables. See `.env.example`.
 | `REX_SOURCE_USER` | `rex` | Basic auth user REX sends |
 | `REX_SOURCE_PASSWORD` | required with REX | Basic auth password REX sends |
 | `REX_TOKEN` | empty | Optional Plex token, enables library renames on playlist rename |
-
-A playlist rename changes the source directory titles immediately. REX does not rename an
-existing library from a source registration alone, so set `REX_TOKEN` when the library titles
-must change in Plex too. The token is the server token from REX, not a client token.
 | `REX_ENABLED` | `true` | Register with REX |
 | `REX_URL` | required with REX | REX base URL |
 | `REX_SOURCE_NAME` | `rex-xstream` | Source name in REX, keep it stable |
@@ -172,6 +205,10 @@ must change in Plex too. The token is the server token from REX, not a client to
 | `XC_ALLOW_PRIVATE_HOSTS` | `false` | Allow providers on private addresses |
 | `RATE_LIMIT_PER_MINUTE` | `120` | API requests per IP per minute |
 | `CORS_ORIGINS` | empty | Comma separated allowed origins |
+
+A playlist rename changes the source directory titles immediately. REX does not rename an
+existing library from a source registration alone, so set `REX_TOKEN` when the library titles
+must change in Plex too. The token is the server token from REX, not a client token.
 
 `SYNC_MAX_*` limits are useful for a first run against a large provider. Set them to small values,
 verify the libraries in REX, then raise or remove them.
@@ -247,15 +284,14 @@ past and `EPG_DAYS` ahead. Programme icons, categories and `xmltv_ns` episode nu
 - Credentials are encrypted with AES-256-GCM before they are written.
 - API responses never include passwords. Provider stream URLs are stored encrypted.
 - Administrative endpoints require `Authorization: Bearer <API_TOKEN>`.
-- Stream and fallback logo requests require REX's Basic credentials.
+- Stream requests require REX's Basic credentials.
 - Provider URLs are validated and private or loopback destinations are rejected unless
   `XC_ALLOW_PRIVATE_HOSTS=true`.
 - Stream paths are parsed as numeric ids. Arbitrary URLs and path traversal are rejected.
 - API rate limiting is per client IP.
 - The container runs as a non-root user.
 - Movies and episodes are proxied with Range support. Live HLS is a redirect to the provider,
-  so the provider credentials are present in that redirect between rex-xstream and the provider,
-  never in the add-on API or a client response.
+  so the provider credentials are present in that redirect and can be visible to whoever follows it.
 
 Never expose the admin API to the internet. Put it behind a VPN or a reverse proxy that blocks
 `/api/v1/playlists` from untrusted clients. REX's feed itself is designed for the local network.
@@ -295,8 +331,11 @@ are probed. If probes fail, `probe_error` is stored per item and the item is hel
 **Live TV is missing.** Confirm REX is nightly 2026.11.02 or newer, ffmpeg exists on the REX
 host, and at least one channel has a successful HLS probe.
 
-**A channel has no guide.** Its `epg_channel_id` must match a channel id in the provider's
-`xmltv.php` document.
+**A channel has no guide.** Check the playlist status and container logs for EPG errors. The
+channel needs an `epg_id` in the channels API, and the provider must supply programmes for it
+in XMLTV or its per-channel guide. Some providers omit IDs or programme data for many channels;
+rex-xstream cannot create listings that the provider does not supply. The guide is pushed to REX
+after the channel has a successful probe.
 
 **REX does not show a new library.** Check the REX log for `SOURCES rex-xstream registered` and
 the source response with `GET /rex/sources/rex-xstream`.
