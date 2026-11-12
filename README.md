@@ -66,7 +66,7 @@ which keeps provider credentials out of client URLs.
 ## Quick start with Docker
 
 ```bash
-git clone <repository>
+git clone https://github.com/leleasley/rex-xstream.git
 cd rex-xstream
 ./scripts/create-env.sh
 ```
@@ -85,11 +85,29 @@ machines.
 Start the service:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 docker compose logs -f
 ```
 
 Open `http://192.168.1.20:9981/api/v1/health`. A healthy response contains `"status":"ok"`.
+
+### Image versions and updates
+
+The Compose file uses `ghcr.io/leleasley/rex-xstream:latest`. The release workflow publishes
+`edge` from main, a commit SHA tag, and version tags such as `1.2.3`, `1.2`, and `1`
+from a stable `v1.2.3` Git tag. `latest` tracks stable releases only. Set
+`REX_XSTREAM_VERSION` in `.env` to pin a version. After a release is published, update with
+`docker compose pull && docker compose up -d`. The first release requires a Git tag and GitHub
+Actions package permissions; GHCR package visibility may need to be made public in GitHub.
+
+For local development, build with `docker build -t rex-xstream:local .` and set the image
+in your own Compose override. The running version is reported by `/api/v1/health`.
+
+`PUBLIC_URL` is the address REX uses to reach this add-on, not the Xtream provider URL.
+Enter the provider address and login when creating a playlist below. The connection test checks
+credentials; the status endpoint shows whether catalog, EPG, probes and delivery finished.
+A missing guide may mean the provider supplies no matching EPG IDs or listings. Check logs
+and the playlist status before sharing diagnostic output; never share provider credentials.
 
 ## Add a playlist
 

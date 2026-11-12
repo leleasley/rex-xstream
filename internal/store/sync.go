@@ -21,6 +21,16 @@ func (s *Store) SetSyncPhase(ctx context.Context, runID int64, phase string) err
 	return err
 }
 
+// SetSyncCounts makes progress visible while a long sync is still running.
+func (s *Store) SetSyncCounts(ctx context.Context, runID int64, counts map[string]int) error {
+	body, err := json.Marshal(counts)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `UPDATE sync_runs SET counts_json = ? WHERE id = ?`, string(body), runID)
+	return err
+}
+
 func (s *Store) FinishSyncRun(ctx context.Context, runID int64, status, phase, errText string, counts map[string]int) error {
 	body, _ := json.Marshal(counts)
 	_, err := s.db.ExecContext(ctx, `UPDATE sync_runs SET finished_at = ?, status = ?, phase = ?, error = ?, counts_json = ? WHERE id = ?`,

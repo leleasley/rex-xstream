@@ -1,10 +1,6 @@
 services:
   rex-xstream:
-    build:
-      context: .
-      args:
-        VERSION: ${APP_VERSION:-dev}
-    image: rex-xstream:local
+    image: ghcr.io/leleasley/rex-xstream:${REX_XSTREAM_VERSION:-latest}
     container_name: rex-xstream
     restart: unless-stopped
     env_file:

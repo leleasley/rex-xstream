@@ -7,7 +7,7 @@ data/
 *.db-shm
 *.log
 logs/
-rex-xstream
+/rex-xstream
 bin/
 dist/
 coverage.out

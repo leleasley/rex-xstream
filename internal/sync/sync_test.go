@@ -281,3 +281,33 @@ func TestUnreachableProviderLeavesPlaylistError(t *testing.T) {
 		t.Fatalf("playlist: %+v", playlist)
 	}
 }
+
+func TestEPGFallsBackWhenXMLTVUnavailable(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/xmltv.php" {
+			http.Error(w, "unavailable", http.StatusNotFound)
+			return
+		}
+		if r.URL.Query().Get("action") == "get_simple_data_table" {
+			fmt.Fprintf(w, `{"epg_listings":[{"title":"QnVsbGV0aW4=","start_timestamp":"%d","stop_timestamp":"%d"}]}`, time.Now().Add(-time.Hour).Unix(), time.Now().Add(time.Hour).Unix())
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer server.Close()
+	s, st, auth, _ := newTestSyncer(t, server.URL, "", config.Config{})
+	if err := st.SyncChannels(context.Background(), auth.ID, []models.Channel{{ProviderID: "10", Name: "News", EPGID: "news"}}); err != nil {
+		t.Fatal(err)
+	}
+	client, err := xc.New(server.URL, "user", "pass", time.Second, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.syncEPG(context.Background(), client, auth.ID); err != nil {
+		t.Fatal(err)
+	}
+	count, err := st.ProgrammeCount(context.Background(), auth.ID)
+	if err != nil || count != 1 {
+		t.Fatalf("programmes = %d, err = %v", count, err)
+	}
+}

@@ -132,9 +132,11 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		if err := s.store.FinishSyncRun(context.WithoutCancel(ctx), runID, status, phase, publicError(runErr), counts); err != nil {
 			s.log.Error("finish sync run", "playlist", playlistID, "error", err)
 		}
+		playlistStatus := "connected"
 		if runErr != nil {
-			_ = s.store.SetPlaylistSyncResult(context.WithoutCancel(ctx), playlistID, "error", publicError(runErr))
+			playlistStatus = "error"
 		}
+		_ = s.store.SetPlaylistSyncResult(context.WithoutCancel(ctx), playlistID, playlistStatus, publicError(runErr))
 		s.log.Info("sync finished", "playlist", playlistID, "status", status, "phase", phase)
 	}()
 	_ = s.store.SetPlaylistStatus(ctx, playlistID, "syncing")
@@ -193,6 +195,7 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		return err
 	}
 	counts["channels"] = len(channels)
+	_ = s.store.SetSyncCounts(ctx, runID, counts)
 
 	movies, err := client.VODStreams(ctx)
 	if err != nil {
@@ -205,6 +208,7 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		return err
 	}
 	counts["movies"] = len(mappedMovies)
+	_ = s.store.SetSyncCounts(ctx, runID, counts)
 
 	series, err := client.Series(ctx)
 	if err != nil {
@@ -217,6 +221,7 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		return err
 	}
 	counts["series"] = len(mappedSeries)
+	_ = s.store.SetSyncCounts(ctx, runID, counts)
 
 	phase = "details"
 	_ = s.store.SetSyncPhase(ctx, runID, phase)
@@ -227,20 +232,24 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		counts["episodes"] = episodes
 	}
 
+	_ = s.store.SetSyncCounts(ctx, runID, counts)
 	phase = "epg"
 	_ = s.store.SetSyncPhase(ctx, runID, phase)
-	if err := s.syncEPG(ctx, client, playlistID); err != nil {
-		s.log.Warn("EPG sync failed", "playlist", playlistID, "error", err)
+	epgErr := s.syncEPG(ctx, client, playlistID)
+	if epgErr != nil {
+		s.log.Warn("EPG sync failed", "playlist", playlistID, "error", epgErr)
 	}
 	if programmes, err := s.store.ProgrammeCount(ctx, playlistID); err == nil {
 		counts["programmes"] = programmes
 	}
 
+	_ = s.store.SetSyncCounts(ctx, runID, counts)
 	phase = "rex"
 	_ = s.store.SetSyncPhase(ctx, runID, phase)
 	if s.cfg.RexEnabled {
 		if err := s.RegisterSource(ctx); err != nil {
-			s.log.Warn("rex registration failed", "error", err)
+			runErr = fmt.Errorf("rex registration: %w", err)
+			return runErr
 		}
 	}
 
@@ -260,6 +269,11 @@ func (s *Syncer) Run(ctx context.Context, playlistID int64) error {
 		}
 	}
 
+	if epgErr != nil {
+		phase = "epg"
+		runErr = fmt.Errorf("EPG sync: %w", epgErr)
+		return runErr
+	}
 	phase = "done"
 	s.log.Info("sync complete", "playlist", playlistID, "counts", counts)
 	return nil
@@ -317,16 +331,13 @@ func (s *Syncer) syncEPG(ctx context.Context, client *xc.Client, playlistID int6
 	if err != nil || len(epgIDs) == 0 {
 		return err
 	}
-	body, err := client.XMLTV(ctx)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
 	from := time.Now().UTC().Add(-3 * time.Hour)
 	to := time.Now().UTC().Add(time.Duration(s.cfg.EPGDays) * 24 * time.Hour)
-	programmes, err := epg.Parse(body, from, to)
-	if err != nil && len(programmes) == 0 {
-		return err
+	var programmes []models.Programme
+	body, xmlErr := client.XMLTV(ctx)
+	if xmlErr == nil {
+		programmes, xmlErr = epg.Parse(body, from, to)
+		body.Close()
 	}
 	allowed := map[string]bool{}
 	for _, id := range epgIDs {
@@ -362,6 +373,12 @@ func (s *Syncer) syncEPG(ctx context.Context, client *xc.Client, playlistID int6
 				guided[channel.EPGID] = true
 			}
 		}
+	}
+	if xmlErr != nil && len(filtered) == 0 {
+		return fmt.Errorf("XMLTV unavailable and per-channel guide returned no programmes: %w", xmlErr)
+	}
+	if xmlErr != nil {
+		s.log.Warn("XMLTV unavailable; using per-channel guide", "playlist", playlistID, "error", xmlErr)
 	}
 	if err := s.store.ReplaceProgrammes(ctx, playlistID, filtered); err != nil {
 		return err
@@ -541,8 +558,10 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			rexIDs = append(rexIDs, item.ID)
 		}
 		if len(items) > 0 {
-			if _, err := s.rex.Push(ctx, items); err != nil {
+			if result, err := s.rex.Push(ctx, items); err != nil {
 				return total, err
+			} else if len(result.Rejected) > 0 {
+				return total, fmt.Errorf("rex rejected %d items: %+v", len(result.Rejected), result.Rejected[0])
 			}
 			if err := s.store.MarkPushed(ctx, "movie", ids, rexIDs); err != nil {
 				return total, err
@@ -588,8 +607,10 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			rexIDs = append(rexIDs, item.ID)
 		}
 		if len(items) > 0 {
-			if _, err := s.rex.Push(ctx, items); err != nil {
+			if result, err := s.rex.Push(ctx, items); err != nil {
 				return total, err
+			} else if len(result.Rejected) > 0 {
+				return total, fmt.Errorf("rex rejected %d items: %+v", len(result.Rejected), result.Rejected[0])
 			}
 			if err := s.store.MarkPushed(ctx, "episode", ids, rexIDs); err != nil {
 				return total, err
@@ -635,8 +656,10 @@ func (s *Syncer) pushDirty(ctx context.Context, playlistID int64) (int, error) {
 			rexIDs = append(rexIDs, item.ID)
 		}
 		if len(items) > 0 {
-			if _, err := s.rex.Push(ctx, items); err != nil {
+			if result, err := s.rex.Push(ctx, items); err != nil {
 				return total, err
+			} else if len(result.Rejected) > 0 {
+				return total, fmt.Errorf("rex rejected %d items: %+v", len(result.Rejected), result.Rejected[0])
 			}
 			if err := s.store.MarkPushed(ctx, "channel", ids, rexIDs); err != nil {
 				return total, err

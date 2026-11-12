@@ -88,6 +88,7 @@ func Load() (*Config, error) {
 		RexSourceName:      env("REX_SOURCE_NAME", DefaultRexSourceName),
 		RexEnabled:         envBool("REX_ENABLED", true),
 		RexPushBatch:       envInt("REX_PUSH_BATCH", DefaultRexPushBatch),
+		RexSendTMDBIDs:     envBool("REX_SEND_TMDB_IDS", true),
 		RexSourceUser:      env("REX_SOURCE_USER", "rex"),
 		RexSourcePassword:  env("REX_SOURCE_PASSWORD", ""),
 		RexToken:           env("REX_TOKEN", ""),

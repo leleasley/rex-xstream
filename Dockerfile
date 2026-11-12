@@ -5,7 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 ARG VERSION=dev
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/rex-xstream ./cmd/rex-xstream
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /out/rex-xstream ./cmd/rex-xstream
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata ffmpeg wget && \
